@@ -1,5 +1,7 @@
 import numpy as np
-from scipy.stats import norm
+from scipy.stats import norm , qmc
+import math
+import pandas as pd
 
 class OptionPricer():
 
@@ -212,8 +214,9 @@ class OptionPricer():
         exact_geom = self.get_geometric_asian_option_price(n_obs=n_obs, option_type=option_type)
 
         # 5. Control Variate Adjustment
-        # Since the Geometric and Arithmetic Asian option are highly correlated, we use 1 as the beta coefficient for simplicity
-        beta = 1
+        # Calculate Beta (regression coefficient)
+        cov_matrix = np.cov(payoff_arith, payoff_geom)
+        beta = cov_matrix[0, 1] / cov_matrix[1, 1]
         
         # Adjusted Arithmetic Price
         payoff_cv = payoff_arith - beta * (payoff_geom - exact_geom)
@@ -230,6 +233,49 @@ class OptionPricer():
     
     def get_arithmetic_basket_option_price(self, option_type='call', num_simulations=100000):
         return None
-    
-    def get_KIKO_put_option_price(self, option_type='put'):
-        return None
+
+    def get_KIKO_put_option_price(self, barrier_lower, barrier_upper , Rebate ,N=24, option_type='put'):
+
+
+        # delta t
+        deltaT = self.tau/N
+
+        # set the random seed
+        seed = 42
+        np.random.seed(seed)
+
+        # generate the paths of stock prices
+        values = []
+        M = int(1e2)
+        sequencer = qmc.Sobol(d=N, seed=seed)
+        # uniform samples
+        X = np.array(sequencer.random(n=M))
+        # standard normal samples
+        Z = norm.ppf(X)
+        # scaled samples
+        samples = (self.r - self.q - 0.5 * self.sigma ** 2) * deltaT + self.sigma * math.sqrt(deltaT) * Z
+        df_samples = pd.DataFrame(samples)
+        df_samples_cumsum = df_samples.cumsum(axis=1)
+        # the simulated stock prices
+        df_stocks = self.S0 * np.exp(df_samples_cumsum)
+        for ipath in df_stocks.index.to_list():
+            ds_path_local = df_stocks.loc[ipath, :]
+            price_max = ds_path_local.max()
+            price_min = ds_path_local.min()
+            if price_max >= barrier_upper:    # (1) knock-out happened
+                knockout_time = ds_path_local[ds_path_local >= barrier_upper].index.to_list()[0]
+                payoff = Rebate * np.exp(-knockout_time * self.r * deltaT)
+                values.append(payoff)
+            elif price_min <= barrier_lower:# (2) knock-in happend
+                final_price = ds_path_local.iloc[-1]
+                payoff = np.exp(- self.r * self.tau) * max(self.K - final_price, 0)
+                values.append(payoff)
+        else: # no knock-out, no knock-in
+            values.append(0)
+            value = np.mean(values)
+        std = np.std(values)
+        value_std = std / math.sqrt(M)
+        conf_interval_lower = value - 1.96 * value_std
+        conf_interval_upper = value + 1.96 * value_std
+        
+        return value, conf_interval_lower,conf_interval_upper, value_std
