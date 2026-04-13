@@ -3,26 +3,6 @@ from scipy.stats import norm , qmc
 import math
 import pandas as pd
 
-def calculate_d1_d2(S0, K, T, r, sigma, t=0, q=0):
-    tau = T - t
-    if tau <= 0:
-        return 0, 0
-    
-    sigma = max(sigma, 1e-8)
-    
-    d1 = (np.log(S0 / K) + (r - q + 0.5 * sigma**2) * tau) / (sigma * np.sqrt(tau))
-    d2 = d1 - sigma * np.sqrt(tau)
-    return d1, d2
-
-def get_european_option_price(S0, K, T, r, sigma, t=0, q=0, option_type='call'):
-    tau = T - t
-    d1, d2 = calculate_d1_d2(S0, K, T, r, sigma, t, q)
-    
-    if option_type == 'call':
-        return S0 * np.exp(-q * tau) * norm.cdf(d1) - K * np.exp(-r * tau) * norm.cdf(d2)
-    else:
-        return K * np.exp(-r * tau) * norm.cdf(-d2) - S0 * np.exp(-q * tau) * norm.cdf(-d1)
-
 class OptionPricer():
 
     def __init__(self, S0, K, T , r, sigma, t = 0, q = 0):
@@ -64,11 +44,33 @@ class OptionPricer():
 
 
     def calculate_d1_d2(self):
-        return calculate_d1_d2(S0=self.S0, K=self.K, T=self.T, r=self.r, sigma=self.sigma, t=self.t, q=self.q)
-    
+        """
+        Calculate d1 and d2 parameters for Black-Scholes formula
+        
+        --------
+        tuple
+            (d1, d2) values
+        """
+        
+        # Calculate d1 and d2
+        d1 = (np.log(self.S0 / self.K) + (self.r - self.q + 0.5 * self.sigma**2) * self.tau) / (self.sigma * np.sqrt(self.tau))
+        d2 = d1 - self.sigma * np.sqrt(self.tau)
 
+        return d1, d2
+    
     def get_european_option_price(self, option_type='call'):
-        return get_european_option_price(S0=self.S0, K=self.K, T=self.T, r=self.r, sigma=self.sigma, t=self.t, q=self.q, option_type=option_type)
+        """
+        Calculates the price of a European call or put option using the Black-Scholes formula.
+        Args:
+            option_type (str): 'call' for call option, 'put' for put option.
+        Returns:
+            float: The price of the option.
+        """
+        d1, d2 = self.calculate_d1_d2()
+        if option_type == 'call':
+            return self.S0 * norm.cdf(d1) - self.K * np.exp(-self.r * self.tau) * norm.cdf(d2)
+        else:
+            return self.K * np.exp(-self.r * self.tau) * norm.cdf(-d2) - self.S0 * norm.cdf(-d1)
     
 
     def get_american_option_price(self, n_steps=100, option_type='call'):
