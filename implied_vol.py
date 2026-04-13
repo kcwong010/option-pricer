@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.stats import norm
-from option_pricer import get_european_option_price
+from option_pricer import OptionPricer
 
 
 def get_implied_volatility(S0, K, T, r, q, market_price, option_type='call'):
@@ -28,10 +28,11 @@ def get_implied_volatility(S0, K, T, r, q, market_price, option_type='call'):
     sigma = sigmahat
     
     while (sigmadiff >= tol and n < nmax):
+        option = OptionPricer(S0=S0, K=K, T=T, r=r, sigma=sigma, t=0, q=q)
         if option_type == 'call':
-            price = get_european_option_price(S0=S0, K=K, T=T, r=r, sigma=sigma, t=0, q=q, option_type='call')
+            price = option.get_european_option_price(option_type='call')
         else:
-            price = get_european_option_price(S0=S0, K=K, T=T, r=r, sigma=sigma, t=0, q=q, option_type='put')
+            price = option.get_european_option_price(option_type='put')
 
         vega = S0 * np.exp(-q * T) * norm.pdf((np.log(S0 / K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))) * np.sqrt(T)
         if vega == 0:
